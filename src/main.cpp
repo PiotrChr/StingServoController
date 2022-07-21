@@ -14,6 +14,8 @@ byte dataArray[16];
 int MOVE_TO_CMD = 1;
 int SET_IDLE = 2;
 int RESET_POS = 3;
+int AUTO_IDLE_ON = 4;
+int AUTO_IDLE_OFF = 5;
 
 void receiveEvent(int howMany);
 void moveTo(Servo &servo, int position);
@@ -22,8 +24,8 @@ void runIdle();
 bool idleMove = false;
 bool idleMoveRight = false;
 bool idleMoveUp = false;
-
 bool resetPos = false;
+bool autoIdle = false;
 
 int hMax = 180;
 int hMin = 0;
@@ -37,7 +39,11 @@ int startingPosV = 70;
 int newPosH = startingPosH;
 int newPosV = startingPosV;
 
+unsigned long lastAction;
+unsigned long triggerIdleAfter = 120;
+
 void setup() {
+  lastAction = millis();
   Serial.begin(9600);
 
   hServo.attach(H_SERVO_PIN);
@@ -49,6 +55,7 @@ void setup() {
 
 void receiveEvent(int howMany)
 {
+  lastAction = millis();
   int cmd = Wire.read();
   int servoNo = Wire.read();
   int position = Wire.read();
@@ -92,6 +99,16 @@ void receiveEvent(int howMany)
   {
     idleMove = false;
     resetPos = true;
+  }
+
+  if (cmd == AUTO_IDLE_ON)
+  {
+    autoIdle = true;
+  }
+
+  if (cmd == AUTO_IDLE_OFF)
+  {
+    autoIdle = false;
   }
 }
 
@@ -152,6 +169,10 @@ void reset() {
 }
 
 void loop() {
+  if (autoIdle && (millis() - lastAction > triggerIdleAfter)) {
+    idleMove = true;
+  }
+
   if (resetPos) {
     reset();
   }
