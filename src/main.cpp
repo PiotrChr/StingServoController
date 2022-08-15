@@ -82,7 +82,12 @@ void receiveEvent(int howMany)
     servo = &hServo;
 
     if (cmd == CMD_STEP){
-      position = newPosH + position;
+      if (position == 1) {
+        newPosH++;
+      } else if (position == 0) {
+        --newPosH;
+      }
+      position = newPosH;
     }
     if (position > hMax) {
       position = hMax;
@@ -95,7 +100,13 @@ void receiveEvent(int howMany)
     servo = &vServo;
 
     if (cmd == CMD_STEP) {
-      position = newPosV + position;
+      if (position == 1) {
+        newPosV++;
+      }
+      else if (position == 0) {
+        --newPosV;
+      }
+      position = newPosV;
     }
     if (position > vMax) {
       position = vMax;
@@ -166,7 +177,7 @@ void runIdle()
 void reset() {
   newPosH = hMin;
   newPosV = vMin;
-  
+
   hServo.write(hMin);
   delay(1000);
   vServo.write(vMin);
