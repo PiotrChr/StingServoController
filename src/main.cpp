@@ -11,15 +11,16 @@ byte dataArray[16];
 #define H_SERVO_PIN 5
 #define V_SERVO_PIN 3
 
-int MOVE_TO_CMD = 1;
-int SET_IDLE = 2;
-int RESET_POS = 3;
-int AUTO_IDLE_ON = 4;
-int AUTO_IDLE_OFF = 5;
+static int CMD_MOVE_TO = 1;
+static int CMD_SET_IDLE = 2;
+static int CMD_RESET_POS = 3;
+static int CMD_AUTO_IDLE_ON = 4;
+static int CMD_AUTO_IDLE_OFF = 5;
+static int CMD_STEP = 6;
 
 void receiveEvent(int howMany);
-void moveTo(Servo &servo, int position);
 void runIdle();
+void showPos();
 
 bool idleMove = false;
 bool idleMoveRight = false;
@@ -27,93 +28,98 @@ bool idleMoveUp = false;
 bool resetPos = false;
 bool autoIdle = false;
 
-int hMax = 180;
-int hMin = 0;
+const int hMax = 180;
+const int hMin = 0;
 
-int vMax = 115;
-int vMin = 70;
+const int vMax = 115;
+const int vMin = 70;
 
-int startingPosH = 0;
-int startingPosV = 70;
+int startingPosH = 90;
+int startingPosV = 90;
 
-int newPosH = startingPosH;
-int newPosV = startingPosV;
+volatile int newPosH;
+volatile int newPosV;
 
-unsigned long lastAction;
-unsigned long triggerIdleAfter = 120;
+volatile unsigned long lastAction;
+const unsigned long triggerIdleAfter = 120;
 
 void setup() {
+  newPosH = startingPosH;
+  newPosV = startingPosV;
   lastAction = millis();
-  Serial.begin(9600);
 
   hServo.attach(H_SERVO_PIN);
   vServo.attach(V_SERVO_PIN);
+  delay(1000);
 
+  hServo.write(newPosH);
+  vServo.write(newPosV);
+
+  delay(1000);
   Wire.begin(SLAVE_ADDRESS);
   Wire.onReceive(receiveEvent);
+  Wire.onRequest(showPos);
+}
+
+void showPos() {
+  Wire.write(newPosV);
+  Wire.write(newPosH);
 }
 
 void receiveEvent(int howMany)
 {
-  lastAction = millis();
   int cmd = Wire.read();
   int servoNo = Wire.read();
   int position = Wire.read();
-  
-  Servo *servo;
 
+  if (cmd == 0)
+    return;
+
+  lastAction = millis();
+  Servo *servo;
+  
   if (servoNo == 1) {
     servo = &hServo;
 
+    if (cmd == CMD_STEP){
+      position = newPosH + position;
+    }
     if (position > hMax) {
       position = hMax;
     }
-    if (position < hMin)
-    {
+    if (position < hMin) {
       position = hMin;
     }
+    newPosH = position;
   } else {
     servo = &vServo;
-    if (position > vMax)
-    {
+
+    if (cmd == CMD_STEP) {
+      position = newPosV + position;
+    }
+    if (position > vMax) {
       position = vMax;
     }
-    if (position < vMin)
-    {
+    if (position < vMin) {
       position = vMin;
     }
+    newPosV = position;
   }
 
-  if (cmd == MOVE_TO_CMD) {
+  if (cmd == CMD_MOVE_TO || cmd == CMD_STEP) {
     idleMove = false;
     (*servo).write(position);
-  }
-  
-  if (cmd == SET_IDLE)
-  {
+  } else if (cmd == CMD_SET_IDLE) {
     resetPos = true;
     idleMove = true;
-  }
-
-  if (cmd == RESET_POS)
-  {
+  } else if (cmd == CMD_RESET_POS) {
     idleMove = false;
     resetPos = true;
-  }
-
-  if (cmd == AUTO_IDLE_ON)
-  {
+  } else if (cmd == CMD_AUTO_IDLE_ON) {
     autoIdle = true;
-  }
-
-  if (cmd == AUTO_IDLE_OFF)
-  {
+  } else if (cmd == CMD_AUTO_IDLE_OFF) {
     autoIdle = false;
   }
-}
-
-void moveTo(Servo &servo, int position) {
-  servo.write(position);
 }
 
 void runIdle()
@@ -158,6 +164,9 @@ void runIdle()
 }
 
 void reset() {
+  newPosH = hMin;
+  newPosV = vMin;
+  
   hServo.write(hMin);
   delay(1000);
   vServo.write(vMin);
@@ -180,5 +189,4 @@ void loop() {
   if (idleMove) {
     runIdle();
   }
-  
 }
