@@ -2,262 +2,246 @@
 #include <Servo.h>
 #include <Wire.h>
 
+#define SLAVE_ADDRESS 0x08
+#define H_SERVO_PIN 5
+#define V_SERVO_PIN 3
+#define DEFAULT_IDLE_SPEED 300
+
+#define CMD_MOVE_TO 1
+#define CMD_SET_IDLE 2
+#define CMD_RESET_POS 3
+#define CMD_AUTO_IDLE_ON 4
+#define CMD_AUTO_IDLE_OFF 5
+#define CMD_STEP 6
+#define CMD_IDLE_AXIS 7
+#define CMD_IDLE_SPEED 8
+#define CMD_STOP 9
+
+#define H_STARTING_POS 90
+#define V_STARTING_POS 90
+
+#define H_MIN 0
+#define H_MAX 180
+#define V_MIN 75
+#define V_MAX 115
+
 Servo hServo;
 Servo vServo;
 
 byte dataArray[16];
 
-#define SLAVE_ADDRESS 0x08
-#define H_SERVO_PIN 5
-#define V_SERVO_PIN 3
-
-static int CMD_MOVE_TO = 1;
-static int CMD_SET_IDLE = 2;
-static int CMD_RESET_POS = 3;
-static int CMD_AUTO_IDLE_ON = 4;
-static int CMD_AUTO_IDLE_OFF = 5;
-static int CMD_STEP = 6;
-static int CMD_IDLE_AXIS = 7;
-static int CMD_IDLE_SPEED = 8;
-static int CMD_STOP = 9;
-
 void receiveEvent(int howMany);
 void runIdle();
-void showPos();
+void showStatus();
+void stepHandler(unsigned int position, unsigned int motor);
+void moveHandler(unsigned int position, unsigned int motor);
+void attach();
+void detach();
 
 bool idleMove = false;
-bool idleMoveRight = false;
-bool idleMoveUp = false;
+bool idleMoveRight = true;
+bool idleMoveUp = true;
 bool resetPos = false;
 bool autoIdle = false;
 
 bool idleV = true;
 bool idleH = true;
 
+bool cmdReceived = false;
+int cmd = 0;
+int arg1 = 0;
+int arg2 = 0;
 
-volatile int idleSpeed = 300;
+volatile int idleSpeed = DEFAULT_IDLE_SPEED;
 volatile int idleVSpeed;
 volatile int idleHSpeed;
 
-const int hMax = 180;
-const int hMin = 0;
-
-const int vMax = 115;
-const int vMin = 70;
-
-int startingPosH = 90;
-int startingPosV = 90;
+int startingPosH = H_STARTING_POS;
+int startingPosV = V_STARTING_POS;
 
 volatile int newPosH;
 volatile int newPosV;
 
 volatile unsigned long lastAction;
-const unsigned long triggerIdleAfter = 60000; // 6s
+const unsigned long triggerIdleAfter = 6000; // 6s
+const unsigned long offAfter = 8000; // 8s
 
 void setup() {
   newPosH = startingPosH;
   newPosV = startingPosV;
   lastAction = millis();
 
-  hServo.attach(H_SERVO_PIN);
-  vServo.attach(V_SERVO_PIN);
-  delay(1000);
-
+  attach();
   hServo.write(newPosH);
   vServo.write(newPosV);
-
   delay(1000);
+  detach();
+
   Wire.begin(SLAVE_ADDRESS);
   Wire.onReceive(receiveEvent);
-  Wire.onRequest(showPos);
+  Wire.onRequest(showStatus);
 }
 
-void showPos() {
-  Wire.write(newPosV);
+void attach() {
+  if (!hServo.attached()) {
+    hServo.attach(H_SERVO_PIN);
+  }
+  if (!vServo.attached()) {
+    vServo.attach(V_SERVO_PIN);
+  }
+  delay(200);
+}
+
+void detach() {
+  if (hServo.attached())
+  {
+    hServo.detach();
+  }
+  if (vServo.attached())
+  {
+    vServo.detach();
+  }
+}
+
+void showStatus() {
   Wire.write(newPosH);
+  Wire.write(newPosV);
+  Wire.write(idleMove);
+  Wire.write(idleH);
+  Wire.write(idleV);
+  Wire.write(autoIdle);
+  Wire.write(idleSpeed);
 }
 
 void receiveEvent(int howMany)
 {
-  int cmd = Wire.read();
-  int arg1 = Wire.read();
-  int arg2 = Wire.read();
-
-  int position;
+  cmd = Wire.read();
+  arg1 = Wire.read();
+  arg2 = Wire.read();
 
   if (cmd == 0)
     return;
 
   lastAction = millis();
-  Servo *servo;
-  
-  if (cmd == CMD_STEP || cmd == CMD_MOVE_TO) {
-    if (arg1 == 1) {
-    servo = &hServo;
-  
-    if (cmd == CMD_STEP){
-      if (position == 1) {
-        newPosH++;
-      } else if (position == 0) {
-        --newPosH;
-      }
-      position = newPosH;
-    }
-    if (position > hMax) {
-      position = hMax;
-    }
-    if (position < hMin) {
-      position = hMin;
-    }
-    newPosH = position;
-  } else {
-    servo = &vServo;
+  cmdReceived = true;
+}
 
-    if (cmd == CMD_STEP) {
-      if (position == 1) {
-        newPosV++;
-      }
-      else if (position == 0) {
-        --newPosV;
-      }
-      position = newPosV;
-    }
-    if (position > vMax) {
-      position = vMax;
-    }
-    if (position < vMin) {
-      position = vMin;
-    }
-    newPosV = position;
-  }
-    int position = arg2;
-
-    if (arg1 == 1) {
-      servo = &hServo;
-
-      if (cmd == CMD_STEP) {
-        if (position == 1) {
-          newPosH++;
-        } else if (position == 0) {
-          --newPosH;
-        }
-        position = newPosH;
-      }
-      if (position > hMax) {
-        position = hMax;
-      }
-      if (position < hMin) {
-        position = hMin;
-      }
-      newPosH = position;
-    } else {
-      servo = &vServo;
-
-      if (cmd == CMD_STEP) {
-        if (position == 1) {
-          newPosV++;
-        } else if (position == 0) {
-          --newPosV;
-        }
-        position = newPosV;
-      }
-      if (position > vMax) {
-        position = vMax;
-      } else if (position < vMin) {
-        position = vMin;
-      }
-      newPosV = position;
-    }
-  }
-
-
-  if (cmd == CMD_MOVE_TO || cmd == CMD_STEP) {
+void handleCommand() {
+  if (cmd == CMD_STEP)
+  {
     idleMove = false;
-    (*servo).write(position);
-  } else if (cmd == CMD_SET_IDLE) {
+    stepHandler(arg2, arg1);
+  }
+  else if (cmd == CMD_MOVE_TO)
+  {
+    idleMove = false;
+    moveHandler(arg2, arg1);
+  }
+  else if (cmd == CMD_SET_IDLE)
+  {
+    attach();
     idleMove = true;
-  } else if (cmd == CMD_RESET_POS) {
+  }
+  else if (cmd == CMD_RESET_POS)
+  {
+    attach();
     idleMove = false;
     resetPos = true;
-  } else if (cmd == CMD_AUTO_IDLE_ON) {
+    idleH = true;
+    idleV = true;
+    idleSpeed = DEFAULT_IDLE_SPEED;
+  }
+  else if (cmd == CMD_AUTO_IDLE_ON)
+  {
+    attach();
     autoIdle = true;
-  } else if (cmd == CMD_AUTO_IDLE_OFF) {
+  }
+  else if (cmd == CMD_AUTO_IDLE_OFF)
+  {
     autoIdle = false;
-  } else if (cmd == CMD_IDLE_AXIS) {
+  }
+  else if (cmd == CMD_IDLE_AXIS)
+  {
     bool *axisIdle;
-    if (arg1 == 1) {
+    if (arg1 == 1)
+    {
       axisIdle = &idleH;
-    } else {
+    }
+    else
+    {
       axisIdle = &idleV;
     }
 
-    if (arg2 == 1) {
+    if (arg2 == 1)
+    {
       *axisIdle = true;
-    } else {
+    }
+    else
+    {
       *axisIdle = false;
     }
-  } else if (cmd == CMD_IDLE_SPEED) {
+  }
+  else if (cmd == CMD_IDLE_SPEED)
+  {
     idleSpeed = 10 * arg1 + arg2;
-  } else if (cmd == CMD_STOP) {
+  }
+  else if (cmd == CMD_STOP)
+  {
     idleMove = false;
   }
+}
+
+Servo* getServoById(unsigned int servoId) {
+  if (servoId == 1) {
+    return &hServo;
+  }
+
+  return &vServo;
 }
 
 void runIdle()
 {
   if (idleH) {
-    if (idleMoveRight)
-    {
-      if (newPosH <= hMax)
-      {
+    if (idleMoveRight) {
+      if (newPosH < H_MAX) {
         hServo.write(newPosH);
         newPosH++;
       }
-      else
-      {
-        newPosH = hMax;
+      else {
+        newPosH = H_MAX;
         idleMoveRight = false;
       }
     }
-    else
-    {
-      if (newPosH >= hMin)
-      {
+    else {
+      if (newPosH > H_MIN) {
         hServo.write(newPosH);
-        --newPosH;
+        newPosH--;
       }
-      else
-      {
-        newPosH = hMin;
+      else {
+        newPosH = H_MIN;
         idleMoveRight = true;
       }
     }
   }
   
   if (idleV) {
-    if (idleMoveUp)
-    {
-      if (newPosV <= vMax)
-      {
+    if (idleMoveUp) {
+      if (newPosV < V_MAX) {
         vServo.write(newPosV);
         newPosV++;
       }
-      else
-      {
-        newPosV = vMax;
+      else {
+        newPosV = V_MAX;
         idleMoveUp = false;
       }
     }
-    else
-    {
-      if (newPosV >= vMin)
-      {
+    else {
+      if (newPosV > V_MIN) {
         vServo.write(newPosV);
-        --newPosV;
+        newPosV--;
       }
-      else
-      {
-        newPosV = vMin;
+      else {
+        newPosV = V_MIN;
         idleMoveUp = true;
       }
     }
@@ -266,13 +250,70 @@ void runIdle()
   delay(idleSpeed);
 }
 
-void reset() {
-  newPosH = hMin;
-  newPosV = vMin;
+int adjustPosToLimits(unsigned int position, int servo) {
 
-  hServo.write(hMin);
+  if (servo == 1) {
+    if (position > H_MAX) {
+      position = H_MAX;
+    }
+    if (position < H_MIN) {
+      position = H_MIN;
+    }
+  } else {
+    if (position > V_MAX) {
+      position = V_MAX;
+    }
+    if (position < V_MIN) {
+      position = V_MIN;
+    }
+  }
+
+  return position;
+}
+
+void stepHandler(unsigned int position, unsigned int motor) {
+  if (motor == 1) {
+    if (position == 1) {
+      newPosH++;
+    }
+    else if (position == 0) {
+      --newPosH;
+    }
+    newPosH = position = adjustPosToLimits(newPosH, motor);
+  } else {
+    if (position == 1) {
+      newPosV++;
+    }
+    else if (position == 0) {
+      --newPosV;
+    }
+    newPosV = position = adjustPosToLimits(newPosV, motor);
+  }
+  attach();
+
+  (getServoById(motor))->write(position);
+}
+
+void moveHandler(unsigned int position, unsigned int motor) {
+  position = adjustPosToLimits(position, motor);
+  
+  if (motor == 1) {
+    newPosH = position;
+  } else {
+    newPosV = position;
+  }
+  attach();
+
+  (getServoById(motor))->write(position);
+}
+
+void reset() {
+  newPosH = startingPosH;
+  newPosV = startingPosV;
+
+  hServo.write(newPosH);
   delay(1000);
-  vServo.write(vMin);
+  vServo.write(newPosV);
   delay(1000);
 
   idleMoveRight = true;
@@ -281,7 +322,18 @@ void reset() {
 }
 
 void loop() {
-  if (autoIdle && (millis() - lastAction > triggerIdleAfter)) {
+  unsigned long offset = millis() - lastAction;
+
+  if (cmdReceived) {
+    cmdReceived = false;
+    handleCommand();
+  }
+
+  if (!idleMove && offset > offAfter) {
+    detach();
+  }
+
+  if (autoIdle && (offset > triggerIdleAfter)) {
     idleMove = true;
   }
 
