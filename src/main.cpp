@@ -2,11 +2,13 @@
 #include <Servo.h>
 #include <Wire.h>
 
-#define SLAVE_ADDRESS 0x08
+// PINS
 #define H_SERVO_PIN 5
 #define V_SERVO_PIN 3
-#define DEFAULT_IDLE_SPEED 300
 
+#define SLAVE_ADDRESS 0x08
+
+// COMMANDS
 #define CMD_MOVE_TO 1
 #define CMD_SET_IDLE 2
 #define CMD_RESET_POS 3
@@ -16,6 +18,9 @@
 #define CMD_IDLE_AXIS 7
 #define CMD_IDLE_SPEED 8
 #define CMD_STOP 9
+
+// MOTOR SETTINGS
+#define DEFAULT_IDLE_SPEED 300
 
 #define H_STARTING_POS 90
 #define V_STARTING_POS 90
@@ -72,6 +77,7 @@ void setup() {
   lastAction = millis();
 
   attach();
+  
   hServo.write(newPosH);
   vServo.write(newPosV);
   delay(1000);
@@ -324,17 +330,18 @@ void reset() {
 void loop() {
   unsigned long offset = millis() - lastAction;
 
-  if (cmdReceived) {
+  if (cmdReceived)
+  {
     cmdReceived = false;
     handleCommand();
   }
 
-  if (!idleMove && offset > offAfter) {
-    detach();
-  }
-
   if (autoIdle && (offset > triggerIdleAfter)) {
     idleMove = true;
+  }
+
+  if (!idleMove && offset > offAfter) {
+    detach();
   }
 
   if (resetPos) {
